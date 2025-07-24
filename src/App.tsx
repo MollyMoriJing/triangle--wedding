@@ -20,6 +20,8 @@ const App: React.FC = () => {
   const [initialDistance, setInitialDistance] = useState(0);
   const [initialScale, setInitialScale] = useState(1);
   const imageRef = useRef<HTMLImageElement>(null);
+
+  // 最小滑动距离
   const minSwipeDistance = 50;
 
   const nextImage = () => {
@@ -49,6 +51,7 @@ const App: React.FC = () => {
     setTranslateY(0);
   };
 
+  // 计算两点间距离
   const getDistance = (touches: React.TouchList) => {
     const [touch1, touch2] = Array.from(touches);
     return Math.sqrt(
@@ -57,6 +60,7 @@ const App: React.FC = () => {
     );
   };
 
+  // 双击放大
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (scale === 1) {
@@ -66,20 +70,62 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
+  // 处理触摸开始
+  const handleTouchStart = (e: React.TouchEvent) => {
     const currentTime = new Date().getTime();
-    const tapLength = currentTime - lastTap;
+    const doubleTapDelay = currentTime - lastTap;
     
-    if (tapLength < 500 && tapLength > 0) {
-      e.preventDefault();
-      if (scale === 1) {
-        setScale(2);
-      } else {
-        resetZoom();
+    if (e.touches.length === 2) {
+      // 双指操作
+      setIsPinching(true);
+      setInitialDistance(getDistance(e.touches));
+      setInitialScale(scale);
+    } else if (e.touches.length === 1) {
+      // 单指操作
+      setTouchEnd(null);
+      setTouchStart(e.targetTouches[0].clientX);
+      
+      // 检查双击
+      if (doubleTapDelay < 300 && doubleTapDelay > 0) {
+        e.preventDefault();
+        if (scale === 1) {
+          setScale(2);
+        } else {
+          resetZoom();
+        }
       }
     }
+    
     setLastTap(currentTime);
+  };
 
+  // 处理触摸移动
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && isPinching) {
+      // 双指缩放
+      e.preventDefault();
+      const currentDistance = getDistance(e.touches);
+      const scaleChange = currentDistance / initialDistance;
+      const newScale = Math.max(0.5, Math.min(4, initialScale * scaleChange));
+      setScale(newScale);
+    } else if (e.touches.length === 1 && scale > 1) {
+      // 单指拖拽（放大状态下）
+      e.preventDefault();
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - (touchStart || 0);
+      const deltaY = touch.clientY - (touchStart || 0);
+      
+      setTranslateX(prev => prev + deltaX * 0.5);
+      setTranslateY(prev => prev + deltaY * 0.5);
+    } else if (e.touches.length === 1) {
+      // 单指滑动切换图片
+      setTouchEnd(e.targetTouches[0].clientX);
+    }
+  };
+
+  // 处理触摸结束
+  const handleTouchEnd = () => {
+    // 滑动逻辑（只在未放大且未捏合时生效）
     if (scale === 1 && !isPinching) {
       if (!touchStart || !touchEnd) return;
       
@@ -99,51 +145,7 @@ const App: React.FC = () => {
     setTouchStart(null);
   };
 
-  const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      setIsPinching(true);
-      setInitialDistance(getDistance(e.touches));
-      setInitialScale(scale);
-    } else if (e.touches.length === 1) {
-      setTouchEnd(null);
-      setTouchStart(e.targetTouches[0].clientX);
-    }
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && isPinching) {
-      e.preventDefault();
-      const currentDistance = getDistance(e.touches);
-      const scaleChange = currentDistance / initialDistance;
-      const newScale = Math.max(0.5, Math.min(4, initialScale * scaleChange));
-      setScale(newScale);
-    } else if (e.touches.length === 1 && scale > 1) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const deltaX = touch.clientX - (touchStart || 0);
-      const deltaY = touch.clientY - (touchStart || 0);
-      
-      setTranslateX(prev => prev + deltaX * 0.5);
-      setTranslateY(prev => prev + deltaY * 0.5);
-    } else if (e.touches.length === 1) {
-      setTouchEnd(e.targetTouches[0].clientX);
-    }
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-
-    if (isLeftSwipe) {
-      nextImage();
-    } else if (isRightSwipe) {
-      prevImage();
-    }
-  };
-
+  // 键盘导航
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
       if (scale === 1) {
@@ -162,6 +164,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [scale]);
 
+  // 重置缩放当切换图片时
   useEffect(() => {
     resetZoom();
   }, [currentIndex]);
@@ -170,8 +173,8 @@ const App: React.FC = () => {
     <div className="app">
       <div 
         className="image-container"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         <div 
@@ -191,6 +194,7 @@ const App: React.FC = () => {
           />
         </div>
         
+        {/* 导航按钮 - 只在未放大时显示 */}
         {scale === 1 && (
           <>
             <button className="nav-btn prev-btn" onClick={prevImage}>
@@ -202,6 +206,7 @@ const App: React.FC = () => {
           </>
         )}
         
+        {/* 指示器 - 只在未放大时显示 */}
         {scale === 1 && (
           <div className="indicators">
             {images.map((_, index) => (
@@ -214,14 +219,16 @@ const App: React.FC = () => {
           </div>
         )}
         
+        {/* 计数器 */}
         <div className="counter">
           {currentIndex + 1} / {images.length}
           {scale > 1 && <span className="zoom-info"> • {Math.round(scale * 100)}%</span>}
         </div>
 
+        {/* 重置按钮 - 只在放大时显示 */}
         {scale > 1 && (
           <button className="reset-btn" onClick={resetZoom}>
-            Reset
+            重置
           </button>
         )}
       </div>
