@@ -10,8 +10,9 @@ const images = [
 
 const App: React.FC = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
+  const [touchEnd, setTouchEnd] = useState<{x: number, y: number} | null>(null);
+  const [lastTouchMove, setLastTouchMove] = useState<{x: number, y: number} | null>(null);
   const [scale, setScale] = useState(1);
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
@@ -51,6 +52,19 @@ const App: React.FC = () => {
     setTranslateY(0);
   };
 
+  // 限制拖拽边界
+  const constrainTranslate = (x: number, y: number, currentScale: number) => {
+    if (currentScale <= 1) return { x: 0, y: 0 };
+    
+    // 根据缩放比例计算最大拖拽距离
+    const maxTranslate = Math.min(200 * currentScale, 400);
+    
+    return {
+      x: Math.max(-maxTranslate, Math.min(maxTranslate, x)),
+      y: Math.max(-maxTranslate, Math.min(maxTranslate, y))
+    };
+  };
+
   // 计算两点间距离
   const getDistance = (touches: React.TouchList) => {
     const [touch1, touch2] = Array.from(touches);
@@ -82,8 +96,11 @@ const App: React.FC = () => {
       setInitialScale(scale);
     } else if (e.touches.length === 1) {
       // 单指操作
+      const touch = e.targetTouches[0];
+      const touchPoint = { x: touch.clientX, y: touch.clientY };
       setTouchEnd(null);
-      setTouchStart(e.targetTouches[0].clientX);
+      setTouchStart(touchPoint);
+      setLastTouchMove(touchPoint);
       
       // 检查双击
       if (doubleTapDelay < 300 && doubleTapDelay > 0) {
@@ -112,24 +129,36 @@ const App: React.FC = () => {
       // 单指拖拽（放大状态下）
       e.preventDefault();
       const touch = e.touches[0];
-      const deltaX = touch.clientX - (touchStart || 0);
-      const deltaY = touch.clientY - (touchStart || 0);
+      const currentTouch = { x: touch.clientX, y: touch.clientY };
       
-      setTranslateX(prev => prev + deltaX * 0.5);
-      setTranslateY(prev => prev + deltaY * 0.5);
-    } else if (e.touches.length === 1) {
+      if (lastTouchMove) {
+        const deltaX = currentTouch.x - lastTouchMove.x;
+        const deltaY = currentTouch.y - lastTouchMove.y;
+        
+        // 增加移动敏感度，根据缩放比例调整移动速度
+        const moveMultiplier = Math.min(scale, 2);
+        const newX = translateX + deltaX * moveMultiplier;
+        const newY = translateY + deltaY * moveMultiplier;
+        
+        // 应用边界限制
+        const constrained = constrainTranslate(newX, newY, scale);
+        setTranslateX(constrained.x);
+        setTranslateY(constrained.y);
+      }
+      
+      setLastTouchMove(currentTouch);
+    } else if (e.touches.length === 1 && scale === 1) {
       // 单指滑动切换图片
-      setTouchEnd(e.targetTouches[0].clientX);
+      const touch = e.targetTouches[0];
+      setTouchEnd({ x: touch.clientX, y: touch.clientY });
     }
   };
 
   // 处理触摸结束
   const handleTouchEnd = () => {
     // 滑动逻辑（只在未放大且未捏合时生效）
-    if (scale === 1 && !isPinching) {
-      if (!touchStart || !touchEnd) return;
-      
-      const distance = touchStart - touchEnd;
+    if (scale === 1 && !isPinching && touchStart && touchEnd) {
+      const distance = touchStart.x - touchEnd.x;
       const isLeftSwipe = distance > minSwipeDistance;
       const isRightSwipe = distance < -minSwipeDistance;
 
@@ -143,6 +172,7 @@ const App: React.FC = () => {
     setIsPinching(false);
     setTouchEnd(null);
     setTouchStart(null);
+    setLastTouchMove(null);
   };
 
   // 键盘导航
@@ -172,16 +202,16 @@ const App: React.FC = () => {
   return (
     <div className="app">
       <div 
-        className="image-container"
+        className={`image-container ${scale > 1 ? 'zoomed' : ''}`}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         <div 
-          className="image-wrapper"
+          className={`image-wrapper ${scale > 1 ? 'zoomed' : ''}`}
           style={{
             transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
-            transition: isPinching ? 'none' : 'transform 0.3s ease'
+            transition: isPinching || scale > 1 ? 'none' : 'transform 0.3s ease'
           }}
         >
           <img 
