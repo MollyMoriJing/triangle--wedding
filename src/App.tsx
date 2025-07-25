@@ -9,10 +9,13 @@ const images = [
 ];
 
 const App: React.FC = () => {
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [curtainOpening, setCurtainOpening] = useState(false);
+  const [welcomeFadingOut, setWelcomeFadingOut] = useState(false);
+  const [showImageContainer, setShowImageContainer] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [touchStart, setTouchStart] = useState<{x: number, y: number} | null>(null);
-  const [touchEnd, setTouchEnd] = useState<{x: number, y: number} | null>(null);
-  const [lastTouchMove, setLastTouchMove] = useState<{x: number, y: number} | null>(null);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [scale, setScale] = useState(1);
   const [translateX, setTranslateX] = useState(0);
   const [translateY, setTranslateY] = useState(0);
@@ -20,10 +23,33 @@ const App: React.FC = () => {
   const [isPinching, setIsPinching] = useState(false);
   const [initialDistance, setInitialDistance] = useState(0);
   const [initialScale, setInitialScale] = useState(1);
+  const [lastCenter, setLastCenter] = useState({ x: 0, y: 0 });
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
 
   // 最小滑动距离
   const minSwipeDistance = 50;
+
+  // 打开窗帘
+  const openCurtain = () => {
+    setCurtainOpening(true);
+    
+    // 窗帘动画完成后开始淡出欢迎屏幕
+    setTimeout(() => {
+      setWelcomeFadingOut(true);
+    }, 2500); // 窗帘动画持续2.5秒
+    
+    // 欢迎屏幕开始淡出时显示图片容器
+    setTimeout(() => {
+      setShowImageContainer(true);
+    }, 2800);
+    
+    // 完全隐藏欢迎屏幕
+    setTimeout(() => {
+      setShowWelcome(false);
+    }, 4000);
+  };
 
   const nextImage = () => {
     if (scale === 1) {
@@ -52,19 +78,6 @@ const App: React.FC = () => {
     setTranslateY(0);
   };
 
-  // 限制拖拽边界
-  const constrainTranslate = (x: number, y: number, currentScale: number) => {
-    if (currentScale <= 1) return { x: 0, y: 0 };
-    
-    // 根据缩放比例计算最大拖拽距离
-    const maxTranslate = Math.min(200 * currentScale, 400);
-    
-    return {
-      x: Math.max(-maxTranslate, Math.min(maxTranslate, x)),
-      y: Math.max(-maxTranslate, Math.min(maxTranslate, y))
-    };
-  };
-
   // 计算两点间距离
   const getDistance = (touches: React.TouchList) => {
     const [touch1, touch2] = Array.from(touches);
@@ -72,6 +85,15 @@ const App: React.FC = () => {
       Math.pow(touch2.clientX - touch1.clientX, 2) + 
       Math.pow(touch2.clientY - touch1.clientY, 2)
     );
+  };
+
+  // 计算两点中心点
+  const getCenter = (touches: React.TouchList) => {
+    const [touch1, touch2] = Array.from(touches);
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    };
   };
 
   // 双击放大
@@ -86,25 +108,28 @@ const App: React.FC = () => {
 
   // 处理触摸开始
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
     const currentTime = new Date().getTime();
     const doubleTapDelay = currentTime - lastTap;
     
     if (e.touches.length === 2) {
-      // 双指操作
+      // 双指操作 - 缩放和拖拽
       setIsPinching(true);
+      setIsDragging(false);
       setInitialDistance(getDistance(e.touches));
       setInitialScale(scale);
+      const center = getCenter(e.touches);
+      setLastCenter(center);
     } else if (e.touches.length === 1) {
       // 单指操作
-      const touch = e.targetTouches[0];
-      const touchPoint = { x: touch.clientX, y: touch.clientY };
+      const touch = e.touches[0];
       setTouchEnd(null);
-      setTouchStart(touchPoint);
-      setLastTouchMove(touchPoint);
+      setTouchStart(touch.clientX);
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+      setIsDragging(scale > 1); // 只有在放大状态下才允许单指拖拽
       
-      // 检查双击
-      if (doubleTapDelay < 300 && doubleTapDelay > 0) {
-        e.preventDefault();
+      // 检查双击（只在未放大时）
+      if (doubleTapDelay < 300 && doubleTapDelay > 0 && scale === 1) {
         if (scale === 1) {
           setScale(2);
         } else {
@@ -118,47 +143,51 @@ const App: React.FC = () => {
 
   // 处理触摸移动
   const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    
     if (e.touches.length === 2 && isPinching) {
-      // 双指缩放
-      e.preventDefault();
+      // 双指缩放和移动
       const currentDistance = getDistance(e.touches);
+      const currentCenter = getCenter(e.touches);
+      
+      // 缩放
       const scaleChange = currentDistance / initialDistance;
       const newScale = Math.max(0.5, Math.min(4, initialScale * scaleChange));
       setScale(newScale);
-    } else if (e.touches.length === 1 && scale > 1) {
-      // 单指拖拽（放大状态下）
-      e.preventDefault();
+      
+      // 移动（基于双指中心点的变化）
+      const deltaX = currentCenter.x - lastCenter.x;
+      const deltaY = currentCenter.y - lastCenter.y;
+      
+      setTranslateX(prev => prev + deltaX);
+      setTranslateY(prev => prev + deltaY);
+      setLastCenter(currentCenter);
+      
+    } else if (e.touches.length === 1) {
       const touch = e.touches[0];
-      const currentTouch = { x: touch.clientX, y: touch.clientY };
       
-      if (lastTouchMove) {
-        const deltaX = currentTouch.x - lastTouchMove.x;
-        const deltaY = currentTouch.y - lastTouchMove.y;
+      if (isDragging && scale > 1) {
+        // 单指拖拽（放大状态下）
+        const deltaX = touch.clientX - dragStart.x;
+        const deltaY = touch.clientY - dragStart.y;
         
-        // 增加移动敏感度，根据缩放比例调整移动速度
-        const moveMultiplier = Math.min(scale, 2);
-        const newX = translateX + deltaX * moveMultiplier;
-        const newY = translateY + deltaY * moveMultiplier;
-        
-        // 应用边界限制
-        const constrained = constrainTranslate(newX, newY, scale);
-        setTranslateX(constrained.x);
-        setTranslateY(constrained.y);
+        setTranslateX(prev => prev + deltaX * 0.8);
+        setTranslateY(prev => prev + deltaY * 0.8);
+        setDragStart({ x: touch.clientX, y: touch.clientY });
+      } else if (scale === 1) {
+        // 单指滑动切换图片（未放大状态）
+        setTouchEnd(touch.clientX);
       }
-      
-      setLastTouchMove(currentTouch);
-    } else if (e.touches.length === 1 && scale === 1) {
-      // 单指滑动切换图片
-      const touch = e.targetTouches[0];
-      setTouchEnd({ x: touch.clientX, y: touch.clientY });
     }
   };
 
   // 处理触摸结束
   const handleTouchEnd = () => {
-    // 滑动逻辑（只在未放大且未捏合时生效）
-    if (scale === 1 && !isPinching && touchStart && touchEnd) {
-      const distance = touchStart.x - touchEnd.x;
+    // 滑动逻辑（只在未放大且未进行其他操作时生效）
+    if (scale === 1 && !isPinching && !isDragging) {
+      if (!touchStart || !touchEnd) return;
+      
+      const distance = touchStart - touchEnd;
       const isLeftSwipe = distance > minSwipeDistance;
       const isRightSwipe = distance < -minSwipeDistance;
 
@@ -169,10 +198,11 @@ const App: React.FC = () => {
       }
     }
     
+    // 重置状态
     setIsPinching(false);
+    setIsDragging(false);
     setTouchEnd(null);
     setTouchStart(null);
-    setLastTouchMove(null);
   };
 
   // 键盘导航
@@ -194,74 +224,106 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [scale]);
 
-  // 重置缩放当切换图片时
   useEffect(() => {
     resetZoom();
   }, [currentIndex]);
 
   return (
     <div className="app">
-      <div 
-        className={`image-container ${scale > 1 ? 'zoomed' : ''}`}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        <div 
-          className={`image-wrapper ${scale > 1 ? 'zoomed' : ''}`}
-          style={{
-            transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
-            transition: isPinching || scale > 1 ? 'none' : 'transform 0.3s ease'
-          }}
-        >
-          <img 
-            ref={imageRef}
-            src={images[currentIndex]} 
-            alt={`图片 ${currentIndex + 1}`}
-            className="main-image"
-            onDoubleClick={handleDoubleClick}
-            onLoad={() => resetZoom()}
-          />
-        </div>
-        
-        {/* 导航按钮 - 只在未放大时显示 */}
-        {scale === 1 && (
-          <>
-            <button className="nav-btn prev-btn" onClick={prevImage}>
-              &#8249;
-            </button>
-            <button className="nav-btn next-btn" onClick={nextImage}>
-              &#8250;
-            </button>
-          </>
-        )}
-        
-        {/* 指示器 - 只在未放大时显示 */}
-        {scale === 1 && (
-          <div className="indicators">
-            {images.map((_, index) => (
-              <button
-                key={index}
-                className={`indicator ${index === currentIndex ? 'active' : ''}`}
-                onClick={() => goToImage(index)}
-              />
-            ))}
+      {showWelcome && (
+        <div className={`welcome-screen ${curtainOpening ? 'opening' : ''} ${welcomeFadingOut ? 'fade-out' : ''}`}>
+          <div className="background-decoration">
+            <div className="heart heart-1">💙</div>
+            <div className="heart heart-2">💙</div>
+            <div className="heart heart-3">💙</div>
+            <div className="heart heart-4">💙</div>
+            <div className="heart heart-5">💙</div>
+            <div className="heart heart-6">💙</div>
           </div>
-        )}
-        
-        {/* 计数器 */}
-        <div className="counter">
-          {currentIndex + 1} / {images.length}
-          {scale > 1 && <span className="zoom-info"> • {Math.round(scale * 100)}%</span>}
-        </div>
 
-        {/* 重置按钮 - 只在放大时显示 */}
-        {scale > 1 && (
-          <button className="reset-btn" onClick={resetZoom}>
-            重置
-          </button>
-        )}
-      </div>
+          <div className={`curtain-container ${curtainOpening ? 'opening' : ''}`}>
+            <div className="curtain curtain-left"></div>
+            <div className="curtain curtain-right"></div>
+            
+            <div className="curtain-content">
+              <div className="wedding-title">
+                <h1>💕 Yida & Fang 💕</h1>
+                <h2>Wedding Ceremony</h2>
+                <div className="date-text">08.02.2025</div>
+              </div>
+              
+              <button className="open-button" onClick={openCurtain}>
+                <span className="button-text">点击开启</span>
+                <div className="button-shine"></div>
+              </button>
+              
+              <div className="instruction-text">
+                ✨ 轻触按钮开启 ✨
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {(showImageContainer || !showWelcome) && (
+        <div 
+          className={`image-container ${showImageContainer ? 'show' : ''}`}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div 
+            className="image-wrapper"
+            style={{
+              transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+              transition: isPinching ? 'none' : 'transform 0.3s ease'
+            }}
+          >
+            <img 
+              ref={imageRef}
+              src={images[currentIndex]} 
+              alt={`图片 ${currentIndex + 1}`}
+              className="main-image"
+              onDoubleClick={handleDoubleClick}
+              onLoad={() => resetZoom()}
+            />
+          </div>
+          
+          {scale === 1 && (
+            <>
+              <button className="nav-btn prev-btn" onClick={prevImage}>
+                &#8249;
+              </button>
+              <button className="nav-btn next-btn" onClick={nextImage}>
+                &#8250;
+              </button>
+            </>
+          )}
+          
+          {scale === 1 && (
+            <div className="indicators">
+              {images.map((_, index) => (
+                <button
+                  key={index}
+                  className={`indicator ${index === currentIndex ? 'active' : ''}`}
+                  onClick={() => goToImage(index)}
+                />
+              ))}
+            </div>
+          )}
+          
+          <div className="counter">
+            {currentIndex + 1} / {images.length}
+            {scale > 1 && <span className="zoom-info"> • {Math.round(scale * 100)}%</span>}
+          </div>
+
+          {scale > 1 && (
+            <button className="reset-btn" onClick={resetZoom}>
+              重置
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
