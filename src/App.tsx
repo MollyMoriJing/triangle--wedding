@@ -24,10 +24,15 @@ const App: React.FC = () => {
   const [isPinching, setIsPinching] = useState(false);
   const [initialDistance, setInitialDistance] = useState(0);
   const [initialScale, setInitialScale] = useState(1);
+  const [initialTranslate, setInitialTranslate] = useState({ x: 0, y: 0 });
   const [lastCenter, setLastCenter] = useState({ x: 0, y: 0 });
+  const [pinchCenter, setPinchCenter] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const imageRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // 最小滑动距离
   const minSwipeDistance = 50;
@@ -79,6 +84,55 @@ const App: React.FC = () => {
     setTranslateY(0);
   };
 
+  // 更新图片和容器尺寸
+  const updateSizes = () => {
+    if (imageRef.current && containerRef.current) {
+      const imgRect = imageRef.current.getBoundingClientRect();
+      const containerRect = containerRef.current.getBoundingClientRect();
+      setImageSize({ width: imgRect.width, height: imgRect.height });
+      setContainerSize({ width: containerRect.width, height: containerRect.height });
+    }
+  };
+
+  // 计算边界限制
+  const getBoundaries = (currentScale: number) => {
+    const scaledWidth = imageSize.width * currentScale;
+    const scaledHeight = imageSize.height * currentScale;
+    
+    const maxTranslateX = Math.max(0, (scaledWidth - containerSize.width) / 2);
+    const maxTranslateY = Math.max(0, (scaledHeight - containerSize.height) / 2);
+    
+    return {
+      minX: -maxTranslateX,
+      maxX: maxTranslateX,
+      minY: -maxTranslateY,
+      maxY: maxTranslateY
+    };
+  };
+
+  // 约束位移在边界内
+  const constrainTranslate = (x: number, y: number, currentScale: number) => {
+    const boundaries = getBoundaries(currentScale);
+    return {
+      x: Math.max(boundaries.minX, Math.min(boundaries.maxX, x)),
+      y: Math.max(boundaries.minY, Math.min(boundaries.maxY, y))
+    };
+  };
+
+  // 将屏幕坐标转换为图片相对坐标
+  const screenToImageCoords = (screenX: number, screenY: number) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const centerX = containerRect.left + containerRect.width / 2;
+    const centerY = containerRect.top + containerRect.height / 2;
+    
+    return {
+      x: screenX - centerX,
+      y: screenY - centerY
+    };
+  };
+
   // 计算两点间距离
   const getDistance = (touches: React.TouchList) => {
     const [touch1, touch2] = Array.from(touches);
@@ -101,7 +155,20 @@ const App: React.FC = () => {
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (scale === 1) {
-      setScale(2);
+      // 计算点击位置作为缩放中心
+      const imageCoords = screenToImageCoords(e.clientX, e.clientY);
+      const newScale = 2.5;
+      
+      // 根据点击位置调整位移，使点击点保持在同一位置
+      const scaleRatio = newScale / scale;
+      const newTranslateX = translateX * scaleRatio - imageCoords.x * (scaleRatio - 1);
+      const newTranslateY = translateY * scaleRatio - imageCoords.y * (scaleRatio - 1);
+      
+      const constrained = constrainTranslate(newTranslateX, newTranslateY, newScale);
+      
+      setScale(newScale);
+      setTranslateX(constrained.x);
+      setTranslateY(constrained.y);
     } else {
       resetZoom();
     }
@@ -119,7 +186,11 @@ const App: React.FC = () => {
       setIsDragging(false);
       setInitialDistance(getDistance(e.touches));
       setInitialScale(scale);
+      setInitialTranslate({ x: translateX, y: translateY });
+      
       const center = getCenter(e.touches);
+      const imageCoords = screenToImageCoords(center.x, center.y);
+      setPinchCenter(imageCoords);
       setLastCenter(center);
     } else if (e.touches.length === 1) {
       // 单指操作
@@ -131,11 +202,19 @@ const App: React.FC = () => {
       
       // 检查双击（只在未放大时）
       if (doubleTapDelay < 300 && doubleTapDelay > 0 && scale === 1) {
-        if (scale === 1) {
-          setScale(2);
-        } else {
-          resetZoom();
-        }
+        const imageCoords = screenToImageCoords(touch.clientX, touch.clientY);
+        const newScale = 2.5;
+        
+        // 根据点击位置调整位移
+        const scaleRatio = newScale / scale;
+        const newTranslateX = translateX * scaleRatio - imageCoords.x * (scaleRatio - 1);
+        const newTranslateY = translateY * scaleRatio - imageCoords.y * (scaleRatio - 1);
+        
+        const constrained = constrainTranslate(newTranslateX, newTranslateY, newScale);
+        
+        setScale(newScale);
+        setTranslateX(constrained.x);
+        setTranslateY(constrained.y);
       }
     }
     
@@ -151,18 +230,27 @@ const App: React.FC = () => {
       const currentDistance = getDistance(e.touches);
       const currentCenter = getCenter(e.touches);
       
-      // 缩放
+      // 计算缩放比例
       const scaleChange = currentDistance / initialDistance;
-      const newScale = Math.max(0.5, Math.min(4, initialScale * scaleChange));
+      const newScale = Math.max(0.8, Math.min(5, initialScale * scaleChange));
+      
+      // 计算基于缩放中心的位移调整
+      const scaleRatio = newScale / initialScale;
+      let newTranslateX = initialTranslate.x * scaleRatio - pinchCenter.x * (scaleRatio - 1);
+      let newTranslateY = initialTranslate.y * scaleRatio - pinchCenter.y * (scaleRatio - 1);
+      
+      // 添加手指移动的位移（相对于初始中心点）
+      const centerDeltaX = currentCenter.x - lastCenter.x;
+      const centerDeltaY = currentCenter.y - lastCenter.y;
+      newTranslateX += centerDeltaX;
+      newTranslateY += centerDeltaY;
+      
+      // 约束在边界内
+      const constrained = constrainTranslate(newTranslateX, newTranslateY, newScale);
+      
       setScale(newScale);
-      
-      // 移动（基于双指中心点的变化）
-      const deltaX = currentCenter.x - lastCenter.x;
-      const deltaY = currentCenter.y - lastCenter.y;
-      
-      setTranslateX(prev => prev + deltaX);
-      setTranslateY(prev => prev + deltaY);
-      setLastCenter(currentCenter);
+      setTranslateX(constrained.x);
+      setTranslateY(constrained.y);
       
     } else if (e.touches.length === 1) {
       const touch = e.touches[0];
@@ -172,8 +260,14 @@ const App: React.FC = () => {
         const deltaX = touch.clientX - dragStart.x;
         const deltaY = touch.clientY - dragStart.y;
         
-        setTranslateX(prev => prev + deltaX * 0.8);
-        setTranslateY(prev => prev + deltaY * 0.8);
+        const newTranslateX = translateX + deltaX;
+        const newTranslateY = translateY + deltaY;
+        
+        // 约束在边界内
+        const constrained = constrainTranslate(newTranslateX, newTranslateY, scale);
+        
+        setTranslateX(constrained.x);
+        setTranslateY(constrained.y);
         setDragStart({ x: touch.clientX, y: touch.clientY });
       } else if (scale === 1) {
         // 单指滑动切换图片（未放大状态）
@@ -206,6 +300,28 @@ const App: React.FC = () => {
     setTouchStart(null);
   };
 
+  // 鼠标滚轮缩放
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    
+    const mouseCoords = screenToImageCoords(e.clientX, e.clientY);
+    const scaleStep = 0.1;
+    const newScale = Math.max(0.8, Math.min(5, scale + (e.deltaY < 0 ? scaleStep : -scaleStep)));
+    
+    if (newScale !== scale) {
+      // 根据鼠标位置调整位移
+      const scaleRatio = newScale / scale;
+      const newTranslateX = translateX * scaleRatio - mouseCoords.x * (scaleRatio - 1);
+      const newTranslateY = translateY * scaleRatio - mouseCoords.y * (scaleRatio - 1);
+      
+      const constrained = constrainTranslate(newTranslateX, newTranslateY, newScale);
+      
+      setScale(newScale);
+      setTranslateX(constrained.x);
+      setTranslateY(constrained.y);
+    }
+  };
+
   // 键盘导航
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -225,8 +341,20 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [scale]);
 
+  // 监听图片加载和窗口大小变化
+  useEffect(() => {
+    const handleResize = () => {
+      updateSizes();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     resetZoom();
+    // 延迟更新尺寸，确保图片已加载
+    setTimeout(updateSizes, 100);
   }, [currentIndex]);
 
   return (
@@ -254,7 +382,7 @@ const App: React.FC = () => {
               </div>
               
               <button className="open-button" onClick={openCurtain}>
-                <span className="button-text">开启 Tap Here</span>
+                <span className="button-text">开启 TapHere</span>
                 <div className="button-shine"></div>
               </button>
               
@@ -271,16 +399,18 @@ const App: React.FC = () => {
       
       {(showImageContainer || !showWelcome) && (
         <div 
+          ref={containerRef}
           className={`image-container ${showImageContainer ? 'show' : ''}`}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel}
         >
           <div 
             className="image-wrapper"
             style={{
               transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
-              transition: isPinching ? 'none' : 'transform 0.3s ease'
+              transition: isPinching || isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)'
             }}
           >
             <img 
@@ -289,7 +419,8 @@ const App: React.FC = () => {
               alt={`图片 ${currentIndex + 1}`}
               className="main-image"
               onDoubleClick={handleDoubleClick}
-              onLoad={() => resetZoom()}
+              onLoad={updateSizes}
+              draggable={false}
             />
           </div>
           

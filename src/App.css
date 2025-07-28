@@ -42,6 +42,11 @@
   opacity: 0;
   transform: scale(0.9);
   transition: opacity 1s ease-out 0.5s, transform 1s ease-out 0.5s;
+  cursor: grab;
+}
+
+.image-container:active {
+  cursor: grabbing;
 }
 
 .image-container.show {
@@ -132,12 +137,12 @@
 
 .curtain-container.opening .curtain-left {
   transform: translateX(-100%);
-  box-shadow: none; /* 移除阴影 */
+  box-shadow: none;
 }
 
 .curtain-container.opening .curtain-right {
   transform: translateX(100%);
-  box-shadow: none; /* 移除阴影 */
+  box-shadow: none;
 }
 
 .curtain-content {
@@ -146,7 +151,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  z-index: 10; /* 在所有层之上 */
+  z-index: 10;
   color: #4a67c8;
   transition: opacity 1s ease-out 1s;
 }
@@ -263,6 +268,7 @@
   height: 100%;
   transform-origin: center center;
   will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .main-image {
@@ -274,6 +280,14 @@
   -webkit-touch-callout: none;
   pointer-events: none;
   will-change: transform;
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  touch-action: none;
+  image-rendering: high-quality;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
 .nav-btn {
@@ -295,12 +309,10 @@
   justify-content: center;
   transition: all 0.3s ease;
   z-index: 10;
-  /* 添加初始状态 */
   opacity: 0;
   transform: translateY(-50%) translateX(-20px);
 }
 
-/* 导航按钮显示动画 */
 .image-container.show .nav-btn {
   opacity: 1;
   transform: translateY(-50%) translateX(0);
@@ -376,7 +388,6 @@
   transition: all 0.5s ease 0.8s;
 }
 
-/* 计数器显示动画 */
 .image-container.show .counter {
   opacity: 1;
   transform: translateY(0);
@@ -410,11 +421,25 @@
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .image-container {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+  }
+  
+  .image-wrapper {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+  
   .nav-btn {
     width: 50px;
     height: 50px;
     font-size: 1.5rem;
     padding: 0.5rem;
+    backdrop-filter: blur(5px);
+    opacity: 0.9;
   }
   
   .prev-btn {
@@ -430,6 +455,7 @@
     right: 20px;
     font-size: 12px;
     padding: 6px 12px;
+    opacity: 0.95;
   }
   
   .reset-btn {
@@ -437,62 +463,39 @@
     left: 20px;
     font-size: 12px;
     padding: 6px 12px;
+    opacity: 0.95;
   }
   
   .indicators {
     bottom: 20px;
+    opacity: 0.9;
   }
   
   .indicator {
     width: 10px;
     height: 10px;
   }
-}
-
-/* 防止图片被选中和拖拽 */
-.main-image {
-  -webkit-user-drag: none;
-  -khtml-user-drag: none;
-  -moz-user-drag: none;
-  -o-user-drag: none;
-}
-
-/* 添加放大时的提示样式 */
-.image-wrapper {
-  cursor: grab;
-}
-
-.image-wrapper:active {
-  cursor: grabbing;
-}
-
-/* 确保在移动设备上的流畅体验 */
-@media (max-width: 768px) {
-  .nav-btn {
-    opacity: 0.8;
-    backdrop-filter: blur(5px);
-  }
   
-  .counter {
-    opacity: 0.9;
-  }
-  
-  .reset-btn {
-    opacity: 0.9;
-  }
-  
-  .indicators {
-    opacity: 0.8;
-  }
-
-  /* 隐藏移动端的滚动条 */
-  .image-container {
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  /* 优化触摸体验 */
-  .image-wrapper {
+  .main-image {
     -webkit-transform: translateZ(0);
     transform: translateZ(0);
   }
+}
+
+/* 防止意外的页面滚动 */
+html, body {
+  touch-action: none;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+/* 优化缩放和拖拽体验 */
+.image-container[style*="cursor: grabbing"] .image-wrapper {
+  transition: none !important;
+}
+
+.image-wrapper.pinching {
+  transition: none !important;
 }
