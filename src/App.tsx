@@ -31,6 +31,7 @@ const App: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [imageLoaded, setImageLoaded] = useState(false);
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -82,6 +83,7 @@ const App: React.FC = () => {
     setScale(1);
     setTranslateX(0);
     setTranslateY(0);
+    setImageLoaded(false);
   };
 
   // 更新图片和容器尺寸
@@ -91,6 +93,23 @@ const App: React.FC = () => {
       const containerRect = containerRef.current.getBoundingClientRect();
       setImageSize({ width: imgRect.width, height: imgRect.height });
       setContainerSize({ width: containerRect.width, height: containerRect.height });
+    }
+  };
+
+  // 处理图片加载完成
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    updateSizes();
+    
+    // 确保图片以最高质量显示
+    if (imageRef.current) {
+      // 强制重绘以确保清晰度
+      imageRef.current.style.opacity = '0.99';
+      setTimeout(() => {
+        if (imageRef.current) {
+          imageRef.current.style.opacity = '1';
+        }
+      }, 10);
     }
   };
 
@@ -382,7 +401,7 @@ const App: React.FC = () => {
               </div>
               
               <button className="open-button" onClick={openCurtain}>
-                <span className="button-text">开启 TapHere</span>
+                <span className="button-text">开启 Tap Here</span>
                 <div className="button-shine"></div>
               </button>
               
@@ -419,8 +438,15 @@ const App: React.FC = () => {
               alt={`图片 ${currentIndex + 1}`}
               className="main-image"
               onDoubleClick={handleDoubleClick}
-              onLoad={updateSizes}
+              onLoad={handleImageLoad}
               draggable={false}
+              loading="eager"
+              decoding="sync"
+              style={{
+                opacity: imageLoaded ? 1 : 0.8,
+                filter: imageLoaded ? 'none' : 'blur(0.5px)',
+                transition: 'opacity 0.3s ease, filter 0.3s ease'
+              }}
             />
           </div>
           
