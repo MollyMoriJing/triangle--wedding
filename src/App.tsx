@@ -5,7 +5,8 @@ const images = [
   '/1.png',
   '/2.png', 
   '/3.png',
-  '/4.png'
+  '/4.png',
+  '/5.png'
 ];
 
 const App: React.FC = () => {
@@ -253,12 +254,15 @@ const App: React.FC = () => {
               </div>
               
               <button className="open-button" onClick={openCurtain}>
-                <span className="button-text">点击开启</span>
+                <span className="button-text">开启 Tap Here</span>
                 <div className="button-shine"></div>
               </button>
               
               <div className="instruction-text">
                 ✨ 轻触按钮开启 ✨
+              </div>
+              <div className="instruction-text">
+                ✨ Tap to Explore ✨
               </div>
             </div>
           </div>
@@ -319,7 +323,7 @@ const App: React.FC = () => {
 
           {scale > 1 && (
             <button className="reset-btn" onClick={resetZoom}>
-              重置
+              重置 Reset
             </button>
           )}
         </div>
